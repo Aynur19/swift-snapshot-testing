@@ -35,7 +35,14 @@
           let message = compare(
             old, new, precision: precision, perceptualPrecision: perceptualPrecision)
         else { return nil }
-        let difference = SnapshotTesting.diff(old, new)
+        
+        let difference = {
+          return switch SnapshotDiffColorization.current {
+            case .original: SnapshotTesting.diff(old, new)
+            case .custom:   SnapshotTesting.diff(old: old, new: new)
+          }
+        }()
+        
         let oldAttachment = XCTAttachment(image: old)
         oldAttachment.name = "reference"
         let isEmptyImage = new.size == .zero
