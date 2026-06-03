@@ -12,7 +12,7 @@ import UIKit
 
 @MainActor
 extension XCTestCase {
-  public func assertSnapshot<ViewType: SwiftUI.View>(
+  public func assertSnapshotTest<ViewType: SwiftUI.View>(
     of view: ViewType,
     size: SnapshotSize,
     config: SnapshotTestConfiguration,
