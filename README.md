@@ -62,6 +62,91 @@ class FeatureTests: XCTestCase {
 }
 ```
 
+## 🚀 Custom Diff Features (added in this fork)
+
+This fork includes several enhancements to improve visual debugging and artifact management.
+
+### Customizable Diff Colors
+
+You can customize the colors used to highlight differences in snapshots. Define a set of RGBA colors for different states (perfect match, weak diff, strong diff, etc.) to match your design system or personal preference.
+
+```swift
+import SnapshotTesting
+
+// Define your custom color palette
+let customColors = SnapshotDiffRGBAColors(
+    noPixel:      RGBAColor(red: 180, green: 100, blue: 255, alpha: 255), // Purple for empty space
+    perfectMatch: RGBAColor(red: 245, green: 245, blue: 245, alpha: 255), // Light gray for match
+    weakDiff:     RGBAColor(red: 255, green: 240, blue: 0,   alpha: 255), // Yellow
+    moderateDiff: RGBAColor(red: 255, green: 140, blue: 0,   alpha: 255), // Orange
+    strongDiff:   RGBAColor(red: 255, green: 80,  blue: 80,  alpha: 255)  // Red
+)
+
+// Activate the custom color mode
+SnapshotDiffColorizationMode.current = .custom(colors: customColors)
+```
+
+### Comparison Layouts
+
+Generate a single composite image that displays the **Reference**, **Failure**, and **Diff** side-by-side or stacked vertically. This allows you to instantly see the context of the failure without opening multiple files.
+
+Supported modes:
+- `.original`: Standard behavior (generates separate files).
+- `.comparisonHorizontal`: Images placed side-by-side (Reference | Failure | Diff).
+- `.comparisonVertical`: Images stacked vertically (Reference / Failure / Diff).
+
+```swift
+assertSnapshot(
+    of: myView,
+    size: .currentDevice(),
+    config: SnapshotTestConfiguration(
+        diffLayoutMode: .comparisonHorizontal, // or .comparisonVertical
+        themes: [.light, .dark]
+    ),
+    line: #line
+)
+```
+
+*Note: This generates an additional artifact file ending with `_comparison.png` in your snapshot folder.*
+
+### Automatic Cleanup
+
+To keep your repository clean, you can configure tests to automatically delete snapshot artifacts (reference and failure images) when a test passes successfully. This ensures you only commit artifacts for failing tests that need review.
+
+```swift
+assertSnapshot(
+    of: myView,
+    size: .currentDevice(),
+    config: SnapshotTestConfiguration(
+        autoDeleteIfSuccess: true // Deletes artifacts if test passes
+    ),
+    line: #line
+)
+```
+
+### Configuration
+
+All features are controlled via the `SnapshotTestConfiguration` struct:
+
+```swift
+public struct SnapshotTestConfiguration {
+    public var file: StaticString
+    public var fileID: StaticString
+    public var testName: String
+    public var recordMode: SnapshotTestingConfiguration.Record
+    public var diffLayoutMode: SnapshotDiffLayoutMode
+    public var themes: [SnapshotTheme]
+    public var autoDeleteIfSuccess: Bool
+    
+    public init(
+        diffLayoutMode: SnapshotDiffLayoutMode = .comparisonHorizontal,
+        themes: [SnapshotTheme] = [.light, .dark],
+        autoDeleteIfSuccess: Bool = true,
+        // ... other parameters
+    )
+}
+```
+
 ## Snapshot Anything
 
 While most snapshot testing libraries in the Swift community are limited to `UIImage`s of `UIView`s,
@@ -316,3 +401,11 @@ Witness-oriented programming and the design of this library was explored in the 
 ## License
 
 This library is released under the MIT license. See [LICENSE](LICENSE) for details.
+
+
+## Acknowledgments
+
+This project is a fork of the amazing [swift-snapshot-testing](https://github.com/pointfreeco/swift-snapshot-testing) library by [Point-Free](https://www.pointfree.co).
+
+
+Special thanks to the contributors of the community and the maintainers of the intermediate fork [leandrodemarco/swift-snapshot-testing](https://github.com/leandrodemarco/swift-snapshot-testing), upon which this version is built.
