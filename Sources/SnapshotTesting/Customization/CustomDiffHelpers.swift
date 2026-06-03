@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  CustomDiffHelpers.swift
 //  swift-snapshot-testing
 //
 //  Created by Aynur Nasybullin on 02.06.2026.
@@ -13,7 +13,7 @@ public enum SnapshotTheme: String {
   case dark
 }
 
-public enum SnapshotDiffMode {
+public enum SnapshotDiffLayoutMode {
   case original
   case comparisonHorizontal
   case comparisonVertical
@@ -26,7 +26,7 @@ public struct SnapshotSize {
     widthMultiplier: CGFloat = 1.0,
     heightMultiplier: CGFloat = 1.0
   ) -> Self {
-    let base = UIScreen.main.bounds.size//SnapshotScreen.currentSize
+    let base = UIScreen.main.bounds.size
     
     return SnapshotSize(size: CGSize(
       width: base.width * widthMultiplier,
@@ -44,23 +44,26 @@ public struct SnapshotTestConfiguration {
   public let fileID: StaticString
   public let testName: String
   public let recordMode: SnapshotTestingConfiguration.Record
-  public let diffMode: SnapshotDiffMode
+  public let diffLayoutMode: SnapshotDiffLayoutMode
   public let themes: [SnapshotTheme]
+  public let autoDeleteIfSuccess: Bool
   
   public init(
     file: StaticString = #file,
     fileID: StaticString = #fileID,
     testName: String = #function,
     recordMode: SnapshotTestingConfiguration.Record = SnapshotTestingConfiguration.Record.missing,
-    diffMode: SnapshotDiffMode = SnapshotDiffMode.comparisonHorizontal,
-    themes: [SnapshotTheme] = [.light, .dark]
+    diffLayoutMode: SnapshotDiffLayoutMode = SnapshotDiffLayoutMode.comparisonHorizontal,
+    themes: [SnapshotTheme] = [.light, .dark],
+    autoDeleteIfSuccess: Bool = true
   ) {
     self.file = file
     self.fileID = fileID
     self.testName = testName
     self.recordMode = recordMode
-    self.diffMode = diffMode
+    self.diffLayoutMode = diffLayoutMode
     self.themes = themes
+    self.autoDeleteIfSuccess = autoDeleteIfSuccess
   }
   
   public var fileUrl: URL {
@@ -91,41 +94,37 @@ public struct SnapshotTestConfiguration {
 }
 
 func generateCustomDiffIfNeeded(config: SnapshotTestConfiguration, theme: SnapshotTheme) {
-    guard config.diffMode != .original else {
-        return
-    }
-
-    let classFolder = config.artifactClass
-    let prefix = "\(config.cleanTestName).\(theme.rawValue)"
-
-    let referenceURL = classFolder.appendingPathComponent("\(prefix)_reference.png")
-    let failureURL = classFolder.appendingPathComponent("\(prefix)_failure.png")
-    let diffURL = classFolder.appendingPathComponent("\(prefix)_diff.png")
-
-    guard let reference = UIImage(contentsOfFile: referenceURL.path),
-          let failure = UIImage(contentsOfFile: failureURL.path),
-          let originalDiff = UIImage(contentsOfFile: diffURL.path)
-    else { return }
-
-    let result: UIImage
-
-  switch config.diffMode {
+  let classFolder = config.artifactClass
+  let prefix = "\(config.cleanTestName).\(theme.rawValue)"
+  
+  let referenceURL = classFolder.appendingPathComponent("\(prefix)_reference.png")
+  let failureURL = classFolder.appendingPathComponent("\(prefix)_failure.png")
+  let diffURL = classFolder.appendingPathComponent("\(prefix)_diff.png")
+  
+  guard let reference = UIImage(contentsOfFile: referenceURL.path),
+        let failure = UIImage(contentsOfFile: failureURL.path),
+        let originalDiff = UIImage(contentsOfFile: diffURL.path)
+  else { return }
+  
+  let result: UIImage
+  
+  switch config.diffLayoutMode {
     case .original:
       return
-      
-    case .comparisonHorizontal:
+    
+   case .comparisonHorizontal:
       result = buildHorizontalDiff(reference: reference, failure: failure, diff: originalDiff)
       
     case .comparisonVertical:
       result = buildVerticalDiff(reference: reference, failure: failure, diff: originalDiff)
   }
-
-    guard let data = result.pngData() else {
-        return
-    }
-    
-    let customDiffURL = classFolder.appendingPathComponent("\(prefix)_comparison.png")
-    try? data.write(to: customDiffURL)
+  
+  guard let data = result.pngData() else {
+    return
+  }
+  
+  let customDiffURL = classFolder.appendingPathComponent("\(prefix)_comparison.png")
+  try? data.write(to: customDiffURL)
 }
 
 private func buildHorizontalDiff(reference: UIImage, failure: UIImage, diff: UIImage) -> UIImage {
@@ -207,9 +206,10 @@ private func buildVerticalDiff(reference: UIImage, failure: UIImage, diff: UIIma
 func removeArtifacts(config: SnapshotTestConfiguration, name: String) {
   let classFolder = config.artifactClass
   
-  guard let files = try? FileManager.default.contentsOfDirectory(at: classFolder, includingPropertiesForKeys: nil) else {
-    return
-  }
+  guard let files = try? FileManager.default.contentsOfDirectory(
+    at: classFolder,
+    includingPropertiesForKeys: nil
+  ) else { return }
   
   for file in files {
     guard file.lastPathComponent.hasPrefix(name) else {
@@ -223,9 +223,11 @@ func removeArtifacts(config: SnapshotTestConfiguration, name: String) {
 }
 
 private func removeClassFolderIfEmpty(folder: URL) {
-  guard let files = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil),
-        files.isEmpty
-  else { return }
+  guard let files = try? FileManager.default.contentsOfDirectory(
+    at: folder, includingPropertiesForKeys: nil
+  ) else { return }
+  
+  guard files.isEmpty else { return }
   
   try? FileManager.default.removeItem(at: folder)
 }

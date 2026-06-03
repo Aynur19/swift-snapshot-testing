@@ -31,15 +31,16 @@
         toData: { $0.pngData() ?? emptyImage().pngData()! },
         fromData: { UIImage(data: $0, scale: imageScale)! }
       ) { old, new in
-        guard
-          let message = compare(
-            old, new, precision: precision, perceptualPrecision: perceptualPrecision)
-        else { return nil }
+        guard let message = compare(
+          old, new, precision: precision, perceptualPrecision: perceptualPrecision
+        ) else { return nil }
         
         let difference = {
-          return switch SnapshotDiffColorization.current {
-            case .original: SnapshotTesting.diff(old, new)
-            case .custom:   SnapshotTesting.diff(old: old, new: new)
+          return switch SnapshotDiffColorizationMode.current {
+            case .original:
+              SnapshotTesting.diff(old, new)
+            case let .custom(colors):
+              SnapshotTesting.diff(colors: colors, old: old, new: new)
           }
         }()
         

@@ -1,5 +1,5 @@
 //
-//  File.swift
+//  CustomDiiff.swift
 //  swift-snapshot-testing
 //
 //  Created by Aynur Nasybullin on 02.06.2026.
@@ -8,20 +8,12 @@
 #if os(iOS) || os(tvOS)
 import UIKit
 
-public enum SnapshotDiffColorization {
-  case original
-  case custom
-  
-  public static var current: Self = .custom
-}
-
-func diff(old: UIImage, new: UIImage) -> UIImage {
+func diff(colors: SnapshotDiffRGBAColors, old: UIImage, new: UIImage) -> UIImage {
   guard let oldCG = old.cgImage,
         let newCG = new.cgImage
   else { return new }
-  
+
   let scale = max(old.scale, new.scale)
-  
   let width = max(oldCG.width, newCG.width)
   let height = max(oldCG.height, newCG.height)
   
@@ -31,43 +23,79 @@ func diff(old: UIImage, new: UIImage) -> UIImage {
   
   var oldPixels = [UInt8](repeating: 0, count: totalBytes)
   var newPixels = [UInt8](repeating: 0, count: totalBytes)
-  var diffPixels = [UInt8](repeating: 0, count: totalBytes)
+  
+  let colorSpace = CGColorSpaceCreateDeviceRGB()
+  
+  guard prepareBeforeDiff(
+    width: width,
+    height: height,
+    bytesPerRow: bytesPerRow,
+    colorSpace: colorSpace,
+    oldCG: oldCG,
+    newCG: newCG,
+    oldPixels: &oldPixels,
+    newPixels: &newPixels
+  ) else { return new }
+  
+  var diffPixels = performPixels(
+    colors: colors,
+    width: width,
+    height: height,
+    bytesPerRow: bytesPerRow,
+    oldPixels: oldPixels,
+    newPixels: newPixels
+  )
   
   guard
-    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-    
-      let oldContext = CGContext(
-        data: &oldPixels,
-        width: width,
-        height: height,
-        bitsPerComponent: 8,
-        bytesPerRow: bytesPerRow,
-        space: colorSpace,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-      ),
-    
-      let newContext = CGContext(
-        data: &newPixels,
-        width: width,
-        height: height,
-        bitsPerComponent: 8,
-        bytesPerRow: bytesPerRow,
-        space: colorSpace,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-      )
-  else {
-    return new
-  }
+    let diffContext = CGContext(
+      data: &diffPixels,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: bytesPerRow,
+      space: colorSpace,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ),
+    let diffCG = diffContext.makeImage()
+  else { return new }
   
-  oldContext.setFillColor(UIColor.clear.cgColor)
-  oldContext.fill(CGRect(x: 0, y: 0, width: width, height: height))
+  return UIImage(cgImage: diffCG, scale: scale, orientation: .up)
+}
+
+private func prepareBeforeDiff(
+  width: Int,
+  height: Int,
+  bytesPerRow: Int,
+  colorSpace: CGColorSpace,
+  oldCG: CGImage,
+  newCG: CGImage,
+  oldPixels: inout [UInt8],
+  newPixels: inout [UInt8]
+) -> Bool {
+  guard
+    let oldContext = CGContext(
+      data: &oldPixels,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: bytesPerRow,
+      space: colorSpace,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ),
+    let newContext = CGContext(
+      data: &newPixels,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: bytesPerRow,
+      space: colorSpace,
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )
+  else { return false }
   
-  newContext.setFillColor(UIColor.clear.cgColor)
-  newContext.fill(CGRect(x: 0, y: 0, width: width, height: height))
+  oldContext.clear(CGRect(x: 0, y: 0, width: width, height: height))
+  newContext.clear(CGRect(x: 0, y: 0, width: width, height: height))
   
-  // ВАЖНО:
-  // рисуем в левый верхний угол
-  // поэтому недостающая область оказывается справа/снизу
   oldContext.draw(oldCG, in: CGRect(
     x: 0,
     y: height - oldCG.height,
@@ -82,65 +110,81 @@ func diff(old: UIImage, new: UIImage) -> UIImage {
     height: newCG.height
   ))
   
-  for pixel in stride(from: 0, to: totalBytes, by: 4) {
-    let oldR = oldPixels[pixel]
-    let oldG = oldPixels[pixel + 1]
-    let oldB = oldPixels[pixel + 2]
-    let oldA = oldPixels[pixel + 3]
-    
-    let newR = newPixels[pixel]
-    let newG = newPixels[pixel + 1]
-    let newB = newPixels[pixel + 2]
-    let newA = newPixels[pixel + 3]
-    
-    let oldExists = oldA > 0
-    let newExists = newA > 0
-    
-    let color: (UInt8, UInt8, UInt8)
-    
-    switch (oldExists, newExists) {
-      case (false, false):
-        color = (255, 255, 255)
+  return true
+}
+
+private func performPixels(
+  colors: SnapshotDiffRGBAColors,
+  width: Int,
+  height: Int,
+  bytesPerRow: Int,
+  oldPixels: [UInt8],
+  newPixels: [UInt8]
+) -> [UInt8] {
+  var result = [UInt8](repeating: 0, count: height * bytesPerRow)
+  let width4 = width * 4
+  
+  result.withUnsafeMutableBufferPointer { resultPtr in
+    oldPixels.withUnsafeBufferPointer { oldPtr in
+      newPixels.withUnsafeBufferPointer { newPtr in
+        let baseRes = resultPtr.baseAddress!
+        let baseOld = oldPtr.baseAddress!
+        let baseNew = newPtr.baseAddress!
         
-      case (true, false), (false, true):
-        color = (180, 100, 255) // Фиолетовый
-        
-      case (true, true):
-        let delta = max(
-          abs(Int(oldR) - Int(newR)),
-          abs(Int(oldG) - Int(newG)),
-          abs(Int(oldB) - Int(newB))
-        )
-        
-        switch delta {
-          case 0...5:   color = (255, 255, 255)   // Белый
-          case 6...25:  color = (255, 210, 230)   // Светло-розовый
-          case 26...80: color = (255, 180, 90)    // Оранжевый
-          default:      color = (255, 80, 80)     // Красный
+        DispatchQueue.concurrentPerform(iterations: height) { y in
+          let rowOffset = y * bytesPerRow
+          let resRow = baseRes.advanced(by: rowOffset)
+          let oldRow = baseOld.advanced(by: rowOffset)
+          let newRow = baseNew.advanced(by: rowOffset)
+          
+          var x = 0
+          while x < width4 {
+            let oldA = oldRow[x + 3]
+            let newA = newRow[x + 3]
+            
+            if oldA > 0 && newA > 0 {
+              let dr = fastDiff(oldRow[x], newRow[x])
+              let dg = fastDiff(oldRow[x+1], newRow[x+1])
+              let db = fastDiff(oldRow[x+2], newRow[x+2])
+              
+              let delta = max(dr, max(dg, db))
+              
+              if delta <= 5 {
+                resRow.setColor(pixel: x, color: colors.perfectMatch)
+              } else if delta <= 25 {
+                resRow.setColor(pixel: x, color: colors.weakDiff)
+              } else if delta <= 80 {
+                resRow.setColor(pixel: x, color: colors.moderateDiff)
+              } else {
+                resRow.setColor(pixel: x, color: colors.strongDiff)
+              }
+            } else if oldA == 0 || newA == 0 {
+              resRow.setColor(pixel: x, color: colors.noPixel)
+            } else if oldA == 0 && newA == 0 {
+              resRow.setColor(pixel: x, color: colors.perfectMatch)
+            }
+            
+            x += 4
+          }
         }
+      }
     }
-    
-    diffPixels[pixel] = color.0
-    diffPixels[pixel + 1] = color.1
-    diffPixels[pixel + 2] = color.2
-    diffPixels[pixel + 3] = 255
   }
   
-  guard
-    let diffContext = CGContext(
-      data: &diffPixels,
-      width: width,
-      height: height,
-      bitsPerComponent: 8,
-      bytesPerRow: bytesPerRow,
-      space: colorSpace,
-      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ),
-    let diffCG = diffContext.makeImage()
-  else {
-    return new
+  return result
+}
+
+@inline(__always)
+private func fastDiff(_ a: UInt8, _ b: UInt8) -> UInt8 {
+  a > b ? a - b : b - a
+}
+
+extension UnsafeMutablePointer<UInt8> {
+  func setColor(pixel: Int, color: RGBAColor) {
+    self[pixel]     = color.red
+    self[pixel + 1] = color.green
+    self[pixel + 2] = color.blue
+    self[pixel + 3] = color.alpha
   }
-  
-  return UIImage(cgImage: diffCG, scale: scale, orientation: .up)
 }
 #endif
