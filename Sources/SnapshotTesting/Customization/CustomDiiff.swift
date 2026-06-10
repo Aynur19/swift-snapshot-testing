@@ -149,7 +149,7 @@ private func performPixels(
               
               let delta = max(dr, max(dg, db))
               
-              if delta <= 5 {
+              if delta <= 1 {
                 resRow.setColor(pixel: x, color: colors.perfectMatch)
               } else if delta <= 25 {
                 resRow.setColor(pixel: x, color: colors.weakDiff)
